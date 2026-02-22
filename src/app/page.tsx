@@ -88,14 +88,14 @@ export default function Home() {
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none" />
 
       <main className="flex flex-col items-center w-full flex-1 px-4 z-10 pt-24 pb-20">
-        <div className="text-center mb-12">
-          <div className="inline-block mb-6 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900/50 backdrop-blur-md text-xs font-medium text-zinc-400">
+        <div className="text-center mb-8 md:mb-12">
+          <div className="inline-block mb-4 md:mb-6 px-3 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/50 backdrop-blur-md text-[10px] md:text-xs font-medium text-zinc-400 uppercase tracking-wider">
             Chef Digital Lead Engine
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-6 bg-gradient-to-br from-white to-zinc-500 bg-clip-text text-transparent">
-            Vind de perfecte <br className="hidden md:block" /> horeca leads.
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-4 md:mb-6 bg-gradient-to-br from-white to-zinc-500 bg-clip-text text-transparent px-2">
+            Vind de perfecte <br className="hidden sm:block" /> horeca leads.
           </h1>
-          <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+          <p className="text-zinc-400 text-base md:text-lg max-w-2xl mx-auto px-4">
             Vul een zoekopdracht in en onze AI vindt automatisch de contactgegevens en verifieert e-mailadressen van beslissers.
           </p>
         </div>

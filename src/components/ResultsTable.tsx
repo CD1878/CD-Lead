@@ -35,9 +35,65 @@ export function ResultsTable({ leads }: ResultsTableProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="w-full max-w-6xl mt-12 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden backdrop-blur-sm"
+            className="w-full max-w-6xl mt-8 md:mt-12"
         >
-            <div className="overflow-x-auto">
+            {/* Mobile View: Cards */}
+            <div className="grid grid-cols-1 gap-4 md:hidden">
+                {leads.map((lead, idx) => {
+                    const StatusIcon = statusConfig[lead.status].icon;
+                    return (
+                        <motion.div
+                            key={lead.id}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.3, delay: idx * 0.1 }}
+                            className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur-sm shadow-xl"
+                        >
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="font-medium text-zinc-200 text-base">{lead.name}</h3>
+                                    <div className="flex items-center text-xs text-zinc-500 mt-1">
+                                        <Globe className="w-3 h-3 mr-1" />
+                                        <span className="truncate max-w-[200px]">{lead.website}</span>
+                                    </div>
+                                </div>
+                                <span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[lead.status].bg} ${statusConfig[lead.status].color}`}>
+                                    <StatusIcon className={`w-3.5 h-3.5 mr-1.5 ${lead.status === 'searching' || lead.status === 'crawling' ? 'animate-spin' : ''}`} />
+                                    {statusConfig[lead.status].label}
+                                </span>
+                            </div>
+
+                            <div className="flex flex-col gap-2 mt-2 pt-3 border-t border-zinc-800/50 bg-zinc-950/30 -mx-4 -mb-4 p-4 rounded-b-xl">
+                                <div className="flex items-center text-sm">
+                                    <Mail className="w-4 h-4 mr-3 text-zinc-500 shrink-0" />
+                                    {lead.initialEmail ? (
+                                        <span className="text-zinc-300 truncate">{lead.initialEmail}</span>
+                                    ) : (
+                                        <span className="text-zinc-600 italic">Zoeken...</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center text-sm">
+                                    <User className="w-4 h-4 mr-3 text-zinc-500 shrink-0" />
+                                    {lead.ownerName ? (
+                                        <span className="text-zinc-200">{lead.ownerName}</span>
+                                    ) : (
+                                        <span className="text-zinc-600 italic">Geen naam</span>
+                                    )}
+                                </div>
+                                {lead.verifiedEmail && (
+                                    <div className="mt-2 text-sm bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 px-3 py-2 rounded-lg flex items-center">
+                                        <CheckCircle2 className="w-4 h-4 mr-2 shrink-0" />
+                                        <span className="truncate">{lead.verifiedEmail}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    );
+                })}
+            </div>
+
+            {/* Desktop View: Table */}
+            <div className="hidden md:block bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden backdrop-blur-sm">
                 <table className="w-full text-left text-sm text-zinc-400">
                     <thead className="text-xs uppercase bg-zinc-800/50 text-zinc-300 border-b border-zinc-800">
                         <tr>
@@ -96,7 +152,7 @@ export function ResultsTable({ leads }: ResultsTableProps) {
                                             <span className="text-zinc-600 italic">-</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-6 py-4 flex justify-end">
                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${statusConfig[lead.status].bg} ${statusConfig[lead.status].color}`}>
                                             <StatusIcon className={`w-3.5 h-3.5 mr-1.5 ${lead.status === 'searching' || lead.status === 'crawling' ? 'animate-spin' : ''}`} />
                                             {statusConfig[lead.status].label}
