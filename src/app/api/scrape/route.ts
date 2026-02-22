@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import FirecrawlApp from '@mendable/firecrawl-js';
 import OpenAI from 'openai';
 
-const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function POST(request: Request) {
     try {
+        const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
         const { website, placeName } = await request.json();
 
         if (!website) {
