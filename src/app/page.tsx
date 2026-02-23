@@ -76,9 +76,9 @@ export default function Home() {
           setLeads(current => current.map(l => l.id === lead.id ? { ...l, status: 'failed' } : l));
         }
 
-        // Prevent Firecrawl Free Tier Rate Limit (429 Throttle)
-        // Firecrawl allows 10-20 requests/min. 2.5s sleep = 24 requests/min pacing.
-        await new Promise(resolve => setTimeout(resolve, 2500));
+        // Prevent API Rate Limits (Firecrawl & Gemini Free Tiers)
+        // Gemini 2.0 Flash Allows ~15 requests/min. 4.5s sleep = 13 requests/min pacing.
+        await new Promise(resolve => setTimeout(resolve, 4500));
       }
 
     } catch (error) {
