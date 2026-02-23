@@ -4,6 +4,47 @@ import OpenAI from 'openai';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow Vercel functions to run for up to 60s for deep crawling
 
+// Native Web Scraper Failsafe
+async function nativeFetchMarkdown(targetUrl: string): Promise<string> {
+    try {
+        const response = await fetch(targetUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        if (!response.ok) return '';
+        const html = await response.text();
+        return html
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .substring(0, 15000);
+    } catch {
+        return '';
+    }
+}
+
+// DuckDuckGo Search Failsafe
+async function duckDuckGoSearch(query: string): Promise<string> {
+    try {
+        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
+        });
+        if (!res.ok) return '';
+        const html = await res.text();
+        return html
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .substring(0, 15000);
+    } catch {
+        return '';
+    }
+}
 export async function POST(request: Request) {
     try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -49,6 +90,12 @@ export async function POST(request: Request) {
             console.error(`Exception tijdens scrape van ${website}:`, scrapeErrorMsg);
         }
 
+        if (!websiteMarkdown) {
+            console.log(`[Failsafe Native Fetch] Firecrawl failed for ${website}. Using native fetch.`);
+            websiteMarkdown = await nativeFetchMarkdown(website);
+            if (websiteMarkdown) siteFailed = false;
+        }
+
         // Failsafe: if we couldn't find an '@' explicitly scrape the /contact page 
         if (!websiteMarkdown.includes('@')) {
             try {
@@ -79,24 +126,32 @@ export async function POST(request: Request) {
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Verwijder 'OR chef' om te voorkomen dat stagiaires (zoals Jillian) of losse koks de hoofd-eigenaar verdringen
-            const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter)`;
+            const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter OR KVK OR LinkedIn OR Facebook OR Instagram)`;
             const res = await firecrawlFetch('search', JSON.stringify({
                 query: searchQuery,
-                limit: 3,
+                limit: 5,
                 scrapeOptions: { formats: ['markdown'] }
             }));
 
             if (res.status === 200 && res.data?.success && res.data?.data) {
+                // Combineer de markdown van de top 5 (of minder) resultaten
                 searchMarkdown = res.data.data
-                    .map((item: { url: string, markdown?: string }) => `BRON: ${item.url}\\n${item.markdown || ''}`)
+                    .map((item: { url: string; markdown?: string }) => `BRON: ${item.url}\\n${item.markdown || ''}`)
                     .join('\\n\\n--- [Volgende Bron] ---\\n\\n');
             } else {
-                searchErrorMsg = res.data?.error || `HTTP ${res.status}`;
-                console.log(`[FIRE-SEARCH-ERR] ${placeName} ->`, searchErrorMsg);
+                searchErrorMsg = `(Search failed: ${res.status} - ${JSON.stringify(res.data)})`;
+                console.warn(`[Scrape API] Web Search failed for ${placeName}:`, res.status, res.data);
             }
-        } catch (e: unknown) {
-            searchErrorMsg = e instanceof Error ? e.message : String(e);
-            console.error(`Web search faalde exception voor ${placeName}:`, searchErrorMsg);
+        } catch (error: unknown) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            console.error(`[Scrape API] Web Search Exception for ${placeName}:`, err);
+            searchErrorMsg = `(Search exception: ${err.message})`;
+        }
+
+        if (!searchMarkdown) {
+            console.log(`[Failsafe DuckDuckGo] Firecrawl search failed for ${placeName}. Using DuckDuckGo.`);
+            const ddgQuery = `"${placeName}" Amsterdam eigenaar oprichter Linkedin`;
+            searchMarkdown = await duckDuckGoSearch(ddgQuery);
         }
 
         // Als BEIDE methoden falen (zowel officiele site als web search levert niks op), kap af.
@@ -125,14 +180,14 @@ export async function POST(request: Request) {
     === OFFICIELE WEBSITE CONTENT ===
     ${websiteMarkdown.substring(0, 15000)}
     
-    === EXTERNE WEB SEARCH RESULTATEN (Artikelen, KvK, LinkedIn, etc.) ===
-    ${searchMarkdown.substring(0, 15000)}
+    === EXTERNE WEB SEARCH RESULTATEN (Artikelen, KvK, LinkedIn, Facebook, Instagram etc.) ===
+    ${searchMarkdown.substring(0, 25000)}
     `;
 
         console.log(`[DEBUG-PROMPT] Inspecting what OpenAI sees for ${placeName}:\\n`, searchMarkdown);
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Snel en capabel genoeg voor dit werk
+            model: "gpt-4o", // Extreem betrouwbaar voor data-extractie en complexe context
             messages: [
                 { role: "system", content: "Je bent een data extractie assistent die output levert in puur JSON formaat." },
                 { role: "user", content: prompt }
