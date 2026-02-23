@@ -108,21 +108,22 @@ export async function POST(request: Request) {
             ],
         });
 
-        const prompt = `Je bent een expert in B2B data-extractie. Je hebt directe toegang tot de Google Zoekmachine. Zoek grondig op het web naar HUIDIGE informatie over het bedrijf/de bakkerij/het restaurant "${placeName}" in Amsterdam.
+        const prompt = `Je bent een expert in B2B data-extractie. Je hebt via je Grounding tool directe toegang tot de Google Zoekmachine en al haar mogelijkheden. Je zoekt actuele bedrijfsinformatie over "${placeName}" in Amsterdam.
 Website URL: ${website}
     
 Jouw taken:
-1. Zoek naar het algemene of specifieke contact e-mailadres voor dit bedrijf. Gebruik je Google Search tool specifiek als je het niet direct uit de website content haalt.
-2. Zoek SPECIFIEK via Google Search naar artikelen, interviews, KVK gegevens, of eigen website over de HUIDIGE ware eigenaar (owner) of oprichter (founder). 
--> Negeer namen van willekeurige bakkers, bedrijfsleiders, stagiaires, of PR-medewerkers. 
--> Je MOET de zoekterm "eigenaar ${placeName} Amsterdam" of "oprichter ${placeName} Amsterdam" gebruiken en kijken wie er in de Google-resultaten bovenaan staat (Bv. "Henk Jongejans" is duidelijk de oprichter van Bakhuys. "Maarten Langeslag" is de oprichter van Fort Negen).
+1. Zoek via Google Search naar het algemene of specifieke contact e-mailadres voor dit bedrijf, mocht het niet direct in de website content staan.
+2. Zoek via Google Search SPECIFIEK naar de ware oprichter (founder) of eigenaar (owner).
+-> CRUCIAAL: Gebruik in je zoekopdracht termen als "${placeName} eigenaar" of "oprichter ${placeName} Amsterdam".
+-> CRUCIAAL: Lees ALS ALLEREERSTE het "AI-overzicht" (AI Overview) bovenaan je eigen Google Search resultaten. Dit geeft vaak gegarandeerd direct het juiste antwoord (bijv. "De eigenaren van Bakkerij Wolf zijn Paula Fles en Stephan de Haas"). Neem die namen 1 op 1 over!
+-> Negeer bedrijfsleiders, stagiaires of willekeurige bakkers.
 
-Als je geen specifieke eigenaar of geen e-mailadres kunt vinden, is dat oké. Laat de property dan he-le-maal weg door exact de waarde \`null\` neer te zetten (niet als string).
+Als je echt geen eigenaar of e-mail kunt achterhalen, gebruik dan letterlijk de waarde \`null\` (zonder quotes).
 
 === OFFICIELE WEBSITE CONTENT VOOR INITIËLE CONTEXT ===
 ${websiteMarkdown.substring(0, 15000)}
 
-Geef je eindantwoord ALTIJD verplicht in precies het volgende pure JSON formaat (GEEN markdown blokken rondom, GEEN uitleg, puur en alleen het rauwe JSON object).
+Geef je eindantwoord ALTIJD verplicht in exact het volgende pure JSON formaat (GEEN markdown blokken, GEEN uitleg, alleen dit specifieke rauwe JSON object):
 {
   "email": "het_gevonden_emailadres_of_null",
   "ownerName": "de_naam_van_de_eigenaar_of_null"
