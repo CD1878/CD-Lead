@@ -69,7 +69,9 @@ export function ResultsTable({ leads }: ResultsTableProps) {
                                     {lead.initialEmail ? (
                                         <span className="text-zinc-300 truncate">{lead.initialEmail}</span>
                                     ) : (
-                                        <span className="text-zinc-600 italic">Zoeken...</span>
+                                        <span className="text-zinc-600 italic">
+                                            {lead.status === 'failed' ? 'Mislukt/Timeout' : 'Zoeken...'}
+                                        </span>
                                     )}
                                 </div>
                                 <div className="flex items-center text-sm">
@@ -77,7 +79,9 @@ export function ResultsTable({ leads }: ResultsTableProps) {
                                     {lead.ownerName ? (
                                         <span className="text-zinc-200">{lead.ownerName}</span>
                                     ) : (
-                                        <span className="text-zinc-600 italic">Geen naam</span>
+                                        <span className="text-zinc-600 italic">
+                                            {lead.status === 'searching' || lead.status === 'crawling' ? 'Zoeken...' : 'Geen naam'}
+                                        </span>
                                     )}
                                 </div>
                                 {lead.verifiedEmail && (
@@ -130,7 +134,9 @@ export function ResultsTable({ leads }: ResultsTableProps) {
                                                 {lead.initialEmail}
                                             </div>
                                         ) : (
-                                            <span className="text-zinc-600 italic">Zoeken...</span>
+                                            <span className="text-zinc-600 italic">
+                                                {lead.status === 'failed' ? 'Mislukt/Timeout' : 'Zoeken...'}
+                                            </span>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
@@ -140,7 +146,9 @@ export function ResultsTable({ leads }: ResultsTableProps) {
                                                 {lead.ownerName}
                                             </div>
                                         ) : (
-                                            <span className="text-zinc-600 italic">Geen naam</span>
+                                            <span className="text-zinc-600 italic">
+                                                {lead.status === 'searching' || lead.status === 'crawling' ? 'Zoeken...' : 'Geen naam'}
+                                            </span>
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
