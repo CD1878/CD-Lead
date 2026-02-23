@@ -102,7 +102,7 @@ export async function POST(request: Request) {
             model: "gemini-2.5-flash",
             tools: [
                 {
-                    // @ts-ignore: googleSearch typing missing in some older @google/generative-ai versions
+                    // @ts-expect-error: googleSearch typing missing in some older @google/generative-ai versions
                     googleSearch: {} // Dit vertelt Gemini om direct op Google.com te zoeken
                 }
             ],
@@ -131,18 +131,18 @@ Geef je eindantwoord ALTIJD verplicht in precies het volgende pure JSON formaat 
         console.log(`[DEBUG-PROMPT] Vraagt Gemini om Google Search in te zetten voor ${placeName}...`);
 
         try {
-            // Gemini 2.0 en 2.5 ondersteunen responseMimeType in generationConfig of JSON format
+            // Gemini met Google Search tool ondersteunt (nog) geen geforceerde JSON schema generation types
             const result = await model.generateContent({
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                }
+                contents: [{ role: "user", parts: [{ text: prompt }] }]
             });
 
-            const responseText = result.response.text();
+            let responseText = result.response.text();
             console.log(`[DEBUG-GEMINI] Raw Gemini Search Response for ${placeName}:`, responseText);
 
-            const extractedInfo = JSON.parse(responseText.trim());
+            // Clean up Markdown backticks if Gemini still includes them despite prompt instructions
+            responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+            const extractedInfo = JSON.parse(responseText);
 
             // Fix string "null"s sometimes returned by AI despite prompt instructions
             const rawEmail = extractedInfo.email === "null" || extractedInfo.email === "" ? null : extractedInfo.email;
