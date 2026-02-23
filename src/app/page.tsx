@@ -49,6 +49,7 @@ export default function Home() {
         try {
           const scrapeRes = await fetch('/api/scrape', {
             method: 'POST',
+            cache: 'no-store',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ website: lead.website, placeName: lead.name }),
           });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import FirecrawlApp from '@mendable/firecrawl-js';
 import OpenAI from 'openai';
 
+export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow Vercel functions to run for up to 60s for deep crawling
 
 export async function POST(request: Request) {
