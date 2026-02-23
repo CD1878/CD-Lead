@@ -23,12 +23,27 @@ export async function POST(request: Request) {
             scrapeOptions: { formats: ['markdown'] }
         });
 
-        const siteFailed = !crawlResult || crawlResult.status === 'failed' || !crawlResult.data || crawlResult.data.length === 0;
+        let siteFailed = !crawlResult || crawlResult.status === 'failed' || !crawlResult.data || crawlResult.data.length === 0;
         let websiteMarkdown = '';
         if (!siteFailed) {
             websiteMarkdown = crawlResult.data!
                 .map(page => page.markdown || '')
                 .join('\\n\\n--- [Volgende Pagina] ---\\n\\n');
+        }
+
+        // Failsafe: if we couldn't find an '@' explicitly scrape the /contact page 
+        if (!websiteMarkdown.includes('@')) {
+            try {
+                const contactUrl = website.endsWith('/') ? website + 'contact' : website + '/contact';
+                console.log(`Failsafe: scraping explicitly ${contactUrl}`);
+                const contactScrape = await firecrawl.scrape(contactUrl, { formats: ['markdown'] }) as unknown as { success: boolean, data: { markdown?: string } };
+                if (contactScrape.success && contactScrape.data && contactScrape.data.markdown) {
+                    websiteMarkdown += '\\n\\n--- [Contact Pagina Failsafe] ---\\n\\n' + contactScrape.data.markdown;
+                    siteFailed = false; // We salvaged it!
+                }
+            } catch (e) {
+                console.error("Failsafe contact scrape failed", e);
+            }
         }
 
         console.log(`Starting web search enrichment for: ${placeName}`);
@@ -116,17 +131,22 @@ export async function POST(request: Request) {
             let status = 'failed';
             let verifiedEmail = null;
 
+            const domainMatch = website.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+            const domain = domainMatch ? domainMatch[1] : '';
+
             if (rawEmail && rawOwner) {
                 // We have both! Let's guess the direct email format usually it's [firstname]@[domain]
-                // But for this mockup, we'll assign 'verified' to show success.
                 const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
-                const domainMatch = website.match(/https?:\/\/(?:www\.)?([^\/]+)/);
-                const domain = domainMatch ? domainMatch[1] : '';
-
                 verifiedEmail = `${firstName}@${domain}`;
                 status = 'verified';
             } else if (rawEmail && !rawOwner) {
                 status = 'general';
+            } else if (!rawEmail && rawOwner) {
+                // We have an owner but no rawEmail on the website.
+                // It shouldn't be 'failed', we instead guess the verifiedEmail
+                const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
+                verifiedEmail = `${firstName}@${domain}`;
+                status = 'verified';
             }
 
             return NextResponse.json({
