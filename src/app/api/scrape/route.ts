@@ -13,44 +13,67 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Website URL is required' }, { status: 400 });
         }
 
-        console.log(`Starting scrape for: ${placeName} (${website})`);
+        console.log(`Starting crawl for: ${placeName} (${website})`);
 
-        // 1. Deep crawl the website using Firecrawl (scrapes up to 3 pages, focusing on finding contact/about pages)
+        // 1. Deep crawl the website using Firecrawl (scrapes up to 3 pages)
         const crawlResult = await firecrawl.crawl(website, {
             limit: 3,
-            scrapeOptions: {
-                formats: ['markdown'],
-            }
+            scrapeOptions: { formats: ['markdown'] }
         });
 
-        if (!crawlResult || crawlResult.status === 'failed' || !crawlResult.data || crawlResult.data.length === 0) {
-            console.error(`Failed to crawl ${website}`);
+        const siteFailed = !crawlResult || crawlResult.status === 'failed' || !crawlResult.data || crawlResult.data.length === 0;
+        let websiteMarkdown = '';
+        if (!siteFailed) {
+            websiteMarkdown = crawlResult.data!
+                .map(page => page.markdown || '')
+                .join('\\n\\n--- [Volgende Pagina] ---\\n\\n');
+        }
+
+        console.log(`Starting web search enrichment for: ${placeName}`);
+
+        // 2. Web Search Enrichment: Zoek het hele internet af naar de eigenaar (bijv. nieuws, KvK, LinkedIn)
+        let searchMarkdown = '';
+        try {
+            const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter OR chef)`;
+            const searchResult = await firecrawl.search(searchQuery, {
+                limit: 3,
+                scrapeOptions: { formats: ['markdown'] }
+            }) as unknown as { success: boolean, data: { url: string, markdown?: string }[] };
+
+            if (searchResult && searchResult.data && searchResult.data.length > 0) {
+                searchMarkdown = searchResult.data
+                    .map((res: { url: string, markdown?: string }) => `BRON: ${res.url}\\n${res.markdown || ''}`)
+                    .join('\\n\\n--- [Volgende Bron] ---\\n\\n');
+            }
+        } catch (searchErr) {
+            console.error('Search enrichment failed, continuing with website data only:', searchErr);
+        }
+
+        if (siteFailed && !searchMarkdown) {
             return NextResponse.json({
                 initialEmail: null,
                 ownerName: null,
                 status: 'failed',
-                error: 'Website konden we niet openen of deep crawl mislukte'
+                error: 'Website konden we niet openen en web search faalde'
             });
         }
 
-        // Combine all markdown pages into one giant context string
-        const markdownContent = crawlResult.data
-            .map(page => page.markdown || '')
-            .join('\\n\\n--- [Volgende Pagina] ---\\n\\n');
-
-        // 2. Use OpenAI to analyze the content and extract targeted leads
+        // 3. Use OpenAI to analyze BOTH the website and the broader web search results
         const prompt = `
-    Je bent een expert in B2B lead generation. Hier is de content van de website van een restaurant genaamd "${placeName}".
+    Je bent een expert in B2B lead generation. Hier is de vergaarde data over een restaurant genaamd "${placeName}".
     Website URL: ${website}
     
     Jouw taak:
-    1. Zoek naar één of meerdere e-mailadressen of het hoofd e-mailadres.
-    2. Zoek in de tekst naar de naam van de eigenaar, manager of contactpersoon van het restaurant.
+    1. Zoek naar één of meerdere e-mailadressen of het hoofd e-mailadres. Combineer kennis uit de bronnen.
+    2. Zoek specifiek naar de voor- en/of achternaam van de eigenaar, manager of oprichter. Gebruik gerust de externe artikelen/bronnen.
     
     Als je geen specifieke persoon of geen e-mailadres kunt vinden, is dat oké. Laat de property dan he-le-maal weg (gebruik null in JSON als literal, NIET de string "null"). Verzin niets.
     
-    Website Content (Markdown):
-    ${markdownContent.substring(0, 30000)} // Limiteer context
+    === OFFICIELE WEBSITE CONTENT ===
+    ${websiteMarkdown.substring(0, 15000)}
+    
+    === EXTERNE WEB SEARCH RESULTATEN (Artikelen, KvK, LinkedIn, etc.) ===
+    ${searchMarkdown.substring(0, 15000)}
     `;
 
         const completion = await openai.chat.completions.create({
