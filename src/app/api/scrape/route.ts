@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import FirecrawlApp from '@mendable/firecrawl-js';
 import OpenAI from 'openai';
 
 export const dynamic = 'force-dynamic';
@@ -7,13 +6,12 @@ export const maxDuration = 60; // Allow Vercel functions to run for up to 60s fo
 
 export async function POST(request: Request) {
     try {
-        const firecrawl = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         const { website, placeName } = await request.json();
 
-        if (!website) {
-            return NextResponse.json({ error: 'Website URL is required' }, { status: 400 });
+        if (!website || !placeName) {
+            return NextResponse.json({ error: 'Website and placeName are required' }, { status: 400 });
         }
 
         console.log(`Starting crawl for: ${placeName} (${website})`);
@@ -21,29 +19,54 @@ export async function POST(request: Request) {
         // 1. Snelle scrape van de homepagina (i.v.m timeouts was crawl te traag)
         let websiteMarkdown = '';
         let siteFailed = true;
+        let scrapeErrorMsg = '';
+
+        const firecrawlFetch = async (endpoint: 'scrape' | 'search', bodyStr: string) => {
+            const apiKey = process.env.FIRECRAWL_API_KEY;
+            const res = await fetch(`https://api.firecrawl.dev/v1/` + endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: bodyStr
+            });
+            const data = await res.json();
+            return { status: res.status, data };
+        };
 
         try {
-            const scrapeResult = await firecrawl.scrape(website, { formats: ['markdown'] }) as unknown as { success: boolean, data: { markdown?: string } };
-            if (scrapeResult.success && scrapeResult.data && scrapeResult.data.markdown) {
-                websiteMarkdown = scrapeResult.data.markdown;
+            const res = await firecrawlFetch('scrape', JSON.stringify({ url: website, formats: ['markdown'] }));
+            if (res.status === 200 && res.data?.success && res.data?.data?.markdown) {
+                websiteMarkdown = res.data.data.markdown;
                 siteFailed = false;
+            } else {
+                scrapeErrorMsg = res.data?.error || `HTTP ${res.status}`;
+                console.log(`[FIRE-SCRAPE-ERR] ${website} ->`, scrapeErrorMsg);
             }
-        } catch (e) {
-            console.error(`Homepagina scrape faalde voor ${website}:`, e);
+        } catch (e: unknown) {
+            scrapeErrorMsg = e instanceof Error ? e.message : String(e);
+            console.error(`Exception tijdens scrape van ${website}:`, scrapeErrorMsg);
         }
 
         // Failsafe: if we couldn't find an '@' explicitly scrape the /contact page 
         if (!websiteMarkdown.includes('@')) {
             try {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
                 const contactUrl = website.endsWith('/') ? website + 'contact' : website + '/contact';
                 console.log(`Failsafe: scraping explicitly ${contactUrl}`);
-                const contactScrape = await firecrawl.scrape(contactUrl, { formats: ['markdown'] }) as unknown as { success: boolean, data: { markdown?: string } };
-                if (contactScrape.success && contactScrape.data && contactScrape.data.markdown) {
-                    websiteMarkdown += '\\n\\n--- [Contact Pagina Failsafe] ---\\n\\n' + contactScrape.data.markdown;
+
+                const res = await firecrawlFetch('scrape', JSON.stringify({ url: contactUrl, formats: ['markdown'] }));
+
+                if (res.status === 200 && res.data?.success && res.data?.data?.markdown) {
+                    websiteMarkdown += '\\n\\n--- [Contact Pagina Failsafe] ---\\n\\n' + res.data.data.markdown;
                     siteFailed = false; // We salvaged it!
+                } else {
+                    console.log(`[FIRE-FAILSAFE-ERR] ${contactUrl} ->`, res.data?.error || `HTTP ${res.status}`);
                 }
-            } catch (e) {
-                console.error("Failsafe contact scrape failed", e);
+            } catch (e: unknown) {
+                console.error("Failsafe contact scrape exception", e instanceof Error ? e.message : String(e));
             }
         }
 
@@ -51,28 +74,37 @@ export async function POST(request: Request) {
 
         // 2. Web Search Enrichment: Zoek het hele internet af naar de eigenaar (bijv. nieuws, KvK, LinkedIn)
         let searchMarkdown = '';
+        let searchErrorMsg = '';
         try {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter OR chef)`;
-            const searchResult = await firecrawl.search(searchQuery, {
+            const res = await firecrawlFetch('search', JSON.stringify({
+                query: searchQuery,
                 limit: 3,
                 scrapeOptions: { formats: ['markdown'] }
-            }) as unknown as { success: boolean, data: { url: string, markdown?: string }[] };
+            }));
 
-            if (searchResult && searchResult.data && searchResult.data.length > 0) {
-                searchMarkdown = searchResult.data
-                    .map((res: { url: string, markdown?: string }) => `BRON: ${res.url}\\n${res.markdown || ''}`)
+            if (res.status === 200 && res.data?.success && res.data?.data) {
+                searchMarkdown = res.data.data
+                    .map((item: { url: string, markdown?: string }) => `BRON: ${item.url}\\n${item.markdown || ''}`)
                     .join('\\n\\n--- [Volgende Bron] ---\\n\\n');
+            } else {
+                searchErrorMsg = res.data?.error || `HTTP ${res.status}`;
+                console.log(`[FIRE-SEARCH-ERR] ${placeName} ->`, searchErrorMsg);
             }
-        } catch (searchErr) {
-            console.error('Search enrichment failed, continuing with website data only:', searchErr);
+        } catch (e: unknown) {
+            searchErrorMsg = e instanceof Error ? e.message : String(e);
+            console.error(`Web search faalde exception voor ${placeName}:`, searchErrorMsg);
         }
 
+        // Als BEIDE methoden falen (zowel officiele site als web search levert niks op), kap af.
         if (siteFailed && !searchMarkdown) {
             return NextResponse.json({
-                initialEmail: null,
-                ownerName: null,
+                error: `Website konden we niet openen en web search faalde. Scrape-Error: ${scrapeErrorMsg} | Search-Error: ${searchErrorMsg}`,
                 status: 'failed',
-                error: 'Website konden we niet openen en web search faalde'
+                initialEmail: null,
+                ownerName: null
             });
         }
 
