@@ -17,18 +17,18 @@ export async function POST(request: Request) {
 
         console.log(`Starting crawl for: ${placeName} (${website})`);
 
-        // 1. Deep crawl the website using Firecrawl (scrapes up to 3 pages)
-        const crawlResult = await firecrawl.crawl(website, {
-            limit: 3,
-            scrapeOptions: { formats: ['markdown'] }
-        });
-
-        let siteFailed = !crawlResult || crawlResult.status === 'failed' || !crawlResult.data || crawlResult.data.length === 0;
+        // 1. Snelle scrape van de homepagina (i.v.m timeouts was crawl te traag)
         let websiteMarkdown = '';
-        if (!siteFailed) {
-            websiteMarkdown = crawlResult.data!
-                .map(page => page.markdown || '')
-                .join('\\n\\n--- [Volgende Pagina] ---\\n\\n');
+        let siteFailed = true;
+
+        try {
+            const scrapeResult = await firecrawl.scrape(website, { formats: ['markdown'] }) as unknown as { success: boolean, data: { markdown?: string } };
+            if (scrapeResult.success && scrapeResult.data && scrapeResult.data.markdown) {
+                websiteMarkdown = scrapeResult.data.markdown;
+                siteFailed = false;
+            }
+        } catch (e) {
+            console.error(`Homepagina scrape faalde voor ${website}:`, e);
         }
 
         // Failsafe: if we couldn't find an '@' explicitly scrape the /contact page 

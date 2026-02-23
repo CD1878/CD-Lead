@@ -74,6 +74,10 @@ export default function Home() {
         } catch {
           setLeads(current => current.map(l => l.id === lead.id ? { ...l, status: 'failed' } : l));
         }
+
+        // Prevent Firecrawl Free Tier Rate Limit (429 Throttle)
+        // Firecrawl allows 10-20 requests/min. 2.5s sleep = 24 requests/min pacing.
+        await new Promise(resolve => setTimeout(resolve, 2500));
       }
 
     } catch (error) {
