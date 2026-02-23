@@ -78,7 +78,8 @@ export async function POST(request: Request) {
         try {
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter OR chef)`;
+            // Verwijder 'OR chef' om te voorkomen dat stagiaires (zoals Jillian) of losse koks de hoofd-eigenaar verdringen
+            const searchQuery = `"${placeName}" Amsterdam (eigenaar OR owner OR oprichter)`;
             const res = await firecrawlFetch('search', JSON.stringify({
                 query: searchQuery,
                 limit: 3,
@@ -110,14 +111,16 @@ export async function POST(request: Request) {
 
         // 3. Use OpenAI to analyze BOTH the website and the broader web search results
         const prompt = `
-    Je bent een expert in B2B lead generation. Hier is de vergaarde data over een restaurant genaamd "${placeName}".
+    Je bent een expert in B2B lead generation. Hier is de vergaarde data over een lokaal bedrijf genaamd "${placeName}".
     Website URL: ${website}
     
     Jouw taak:
-    1. Zoek naar één of meerdere e-mailadressen of het hoofd e-mailadres. Combineer kennis uit de bronnen.
-    2. Zoek specifiek naar de voor- en/of achternaam van de eigenaar, manager of oprichter. Gebruik gerust de externe artikelen/bronnen.
+    1. Zoek naar het hoofd e-mailadres (bijv. info@, hallo@) of een specifiek e-mailadres. Combineer kennis uit de bronnen.
+    2. Zoek SPECIFIEK naar de voor- en/of achternaam van de ware eigenaar (owner) of oprichter (founder). 
+       *LET OP*: Negeer namen van willekeurige medewerkers of managers (zoals degene achter klachtenafhandeling of sales). Als de externe artikelen duidelijk spreken van een 'eigenaar', 'oprichter' of 'man/vrouw achter [bedrijf]', dan móét je die naam prioriteren.
+       *Bv. als je 'Maarten Langeslag' als oprichter in de tekst ziet, kies dan ALTIJD Maarten.*
     
-    Als je geen specifieke persoon of geen e-mailadres kunt vinden, is dat oké. Laat de property dan he-le-maal weg (gebruik null in JSON als literal, NIET de string "null"). Verzin niets.
+    Als je geen specifieke eigenaar of geen e-mailadres kunt vinden, is dat oké. Laat de property dan he-le-maal weg (gebruik null in JSON als literal, NIET de string "null"). Verzin niets.
     
     === OFFICIELE WEBSITE CONTENT ===
     ${websiteMarkdown.substring(0, 15000)}
@@ -125,6 +128,8 @@ export async function POST(request: Request) {
     === EXTERNE WEB SEARCH RESULTATEN (Artikelen, KvK, LinkedIn, etc.) ===
     ${searchMarkdown.substring(0, 15000)}
     `;
+
+        console.log(`[DEBUG-PROMPT] Inspecting what OpenAI sees for ${placeName}:\\n`, searchMarkdown);
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini", // Snel en capabel genoeg voor dit werk
@@ -143,7 +148,7 @@ export async function POST(request: Request) {
                             type: "object",
                             properties: {
                                 email: { type: "string", description: "Het e-mailadres van het restaurant. Gebruik null als er geen is." },
-                                ownerName: { type: "string", description: "De volledige naam of voornaam van de eigenaar of contactpersoon. Gebruik null als er geen wordt vermeld." },
+                                ownerName: { type: "string", description: "De ware eigenaar of oprichter (volle naam of voornaam). CITEER ABSOLUUT NIET een gewone medewerker. Gebruik null als de expliciete oprichter niet gevonden wordt." },
                             },
                             required: ["email", "ownerName"]
                         }
