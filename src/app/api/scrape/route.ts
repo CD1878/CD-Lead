@@ -90,21 +90,23 @@ export async function POST(request: Request) {
             websiteMarkdown = await nativeFetchMarkdown(website);
         }
 
-        // Failsafe contact: if we couldn't find an '@' explicitly scrape the /contact page 
-        if (!websiteMarkdown.includes('@')) {
-            try {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                const contactUrl = website.endsWith('/') ? website + 'contact' : website + '/contact';
-                console.log(`Failsafe: scraping explicitly ${contactUrl}`);
+        // Failsafe contact & about: we expliciet dieper graven om zeker te zijn dat we alle 'Over Ons' info hebben
+        try {
+            const extraPaths = ['/contact', '/over-ons', '/about', '/over', '/team'];
+            const baseUrl = website.endsWith('/') ? website.slice(0, -1) : website;
 
-                // Let's use native fetch directly here to save time/credits for this failsafe
-                const contactRes = await nativeFetchMarkdown(contactUrl);
-                if (contactRes) {
-                    websiteMarkdown += '\n\n--- [Contact Pagina Failsafe] ---\n\n' + contactRes;
+            for (const path of extraPaths) {
+                // Check if we already have the email, keep going for owners though
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Be gentle
+                const pageUrl = baseUrl + path;
+                console.log(`[Deep Crawl Failsafe] Scraping explicitly ${pageUrl}`);
+                const pageRes = await nativeFetchMarkdown(pageUrl);
+                if (pageRes && pageRes.length > 100) {
+                    websiteMarkdown += `\n\n--- [EXTRA PAGINA: ${path}] ---\n\n` + pageRes;
                 }
-            } catch (e: unknown) {
-                console.error("Failsafe contact scrape exception", String(e));
             }
+        } catch (e: unknown) {
+            console.error("Failsafe deep crawl exception", String(e));
         }
 
         // shared vars for extracted data
