@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow Vercel functions to run for up to 60s for deep crawling
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Website and placeName are required' }, { status: 400 });
         }
 
-        console.log(`Starting extraction for: ${placeName} (${website}) using OpenAI w/ DDG Grounding`);
+        console.log(`Starting extraction for: ${placeName} (${website}) using Ultimate AI Waterfall (Gemini + OpenAI)`);
 
         // 1. Snelle scrape van de homepagina of contact pagina (we houden deze als basis context)
         let websiteMarkdown = '';
@@ -106,21 +107,89 @@ export async function POST(request: Request) {
             }
         }
 
-        // 2. EXTRA CONTEXT: Brave Web Search
-        // We voegen een externe Brave zoekopdracht toe als extra databron ("En-En" strategie).
-        console.log(`[Failsafe WebSearch] Uitvoeren parallel webresearch voor ${placeName}...`);
-        const searchQuery = `"${placeName}" Amsterdam eigenaar OR oprichter OR Linkedin`;
-        const searchMarkdown = await braveWebSearch(searchQuery);
+        // shared vars for extracted data
+        let rawEmail: string | null = null;
+        let rawOwner: string | null = null;
+        let aiSuccess = false;
 
-        // 3. Setup OpenAI als de Orcherstrator (aangezien Gemini free tier in de EU strikt gelimiteerd is)
-        const openAiKey = process.env.OPENAI_API_KEY;
-        if (!openAiKey) {
-            return NextResponse.json({ error: 'OPENAI_API_KEY required' }, { status: 400 });
-        }
+        // 2. PRIMARY AI: Gemini 2.5 Flash with Google Search Grounding
+        // Dit haalt de machtige "blauw AI blokjes" van Google op voor maximale accuraatheid
+        const geminiApiKey = process.env.GEMINI_API_KEY;
+        if (geminiApiKey) {
+            console.log(`[PRIMARY AI] Probeer Gemini 2.5 Flash Grounding voor ${placeName}...`);
+            try {
+                const genAI = new GoogleGenerativeAI(geminiApiKey);
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-2.5-flash",
+                    tools: [
+                        {
+                            // @ts-expect-error: googleSearch is valid but types might be outdated
+                            googleSearch: {}
+                        }
+                    ],
+                });
 
-        const prompt = `Je bent een expert in B2B data-extractie. Je hebt via je externe scraping tool actuele bedrijfsinformatie verzameld over "${placeName}" in Amsterdam.
+                const geminiPrompt = `Je bent een expert in B2B data-extractie. Je hebt via je Grounding tool directe toegang tot de Google Zoekmachine. Je zoekt actuele bedrijfsinformatie over "${placeName}" in Amsterdam.
 Website URL: ${website}
     
+Jouw taken:
+1. Zoek naar het algemene of specifieke contact e-mailadres voor dit bedrijf.
+2. Zoek SPECIFIEK naar de ware oprichter (founder) of eigenaar (owner).
+-> CRUCIAAL: Gebruik je Google Search tool ALTIJD actief! Zoek op "${placeName} eigenaar" of "oprichter ${placeName} Amsterdam".
+-> CRUCIAAL: Lees ALS ALLEREERSTE het "AI-overzicht" (AI Overview) bovenaan je eigen Google Search resultaten. Dit geeft heel vaak direct het antwoord (bijv. "Paula Fles en Stephan de Haas" of "Yoeri Joosten en Elin Visser"). Neem die namen exact over!
+
+Als je echt geen eigenaar of e-mail kunt achterhalen via de website en Google Search, gebruik dan exact de letterlijke waarde null.
+
+=== OFFICIELE WEBSITE CONTENT VOOR INITIËLE CONTEXT ===
+${websiteMarkdown.substring(0, 15000)}
+
+Geef je eindantwoord ALTIJD verplicht in exact het volgende pure JSON formaat (GEEN markdown blokken, GEEN uitleg, alleen dit specifieke rauwe JSON object):
+{
+  "email": "het_gevonden_emailadres_of_null",
+  "ownerName": "de_naam_van_de_eigenaar_of_null"
+}`;
+
+                const result = await model.generateContent({
+                    contents: [{ role: "user", parts: [{ text: geminiPrompt }] }]
+                });
+
+                let responseText = result.response.text();
+                responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+                const parsed = JSON.parse(responseText);
+
+                // If we found a valid owner, mark as success!
+                if (parsed.ownerName && parsed.ownerName !== "null" && parsed.ownerName !== "") {
+                    rawOwner = parsed.ownerName;
+                    rawEmail = parsed.email === "null" || parsed.email === "" ? null : parsed.email;
+                    aiSuccess = true;
+                    console.log(`[PRIMARY AI SUCCESS] Gemini vond eigenaar:`, rawOwner);
+                } else {
+                    console.log(`[PRIMARY AI] Gemini vond geen eigenaar. De payload was:`, parsed);
+                }
+            } catch (err: unknown) {
+                console.log(`[PRIMARY AI ERROR] Gemini faalde (limiet of fout):`, err instanceof Error ? err.message : String(err));
+            }
+        } else {
+            console.log(`[PRIMARY AI SKIP] Geen GEMINI_API_KEY gevonden.`);
+        }
+
+        // 3. FALLBACK AI: OpenAI + Brave Web Search ("En-En" Strategie)
+        if (!aiSuccess) {
+            console.log(`[FALLBACK AI] Overschakelen naar onbeperkte OpenAI + Brave Search voor ${placeName}...`);
+
+            console.log(`[Failsafe WebSearch] Uitvoeren parallel webresearch voor ${placeName}...`);
+            const searchQuery = `"${placeName}" Amsterdam eigenaar OR oprichter OR Linkedin`;
+            const searchMarkdown = await braveWebSearch(searchQuery);
+
+            const openAiKey = process.env.OPENAI_API_KEY;
+            if (!openAiKey) {
+                return NextResponse.json({ error: 'OPENAI_API_KEY required for fallback' }, { status: 400 });
+            }
+
+            const prompt = `Je bent een expert in B2B data-extractie. Je hebt via je externe scraping tool actuele bedrijfsinformatie verzameld over "${placeName}" in Amsterdam.
+Website URL: ${website}
+        
 Jouw taken:
 1. Zoek naar het algemene of specifieke contact e-mailadres voor dit bedrijf.
 2. Zoek SPECIFIEK naar de ware oprichter (founder) of eigenaar (owner).
@@ -142,77 +211,72 @@ Geef je eindantwoord ALTIJD verplicht in exact het volgende pure JSON formaat (G
   "ownerName": "de_naam_van_de_eigenaar_of_null"
 }`;
 
-        console.log(`[DEBUG-PROMPT] Vraagt OpenAI (met DDG supercharge) om eigenaar te achterhalen voor ${placeName}...`);
+            try {
+                const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${openAiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',
+                        response_format: { type: "json_object" },
+                        messages: [
+                            { role: 'system', content: prompt }
+                        ],
+                        temperature: 0.2
+                    })
+                });
 
-        try {
-            const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${openAiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    response_format: { type: "json_object" },
-                    messages: [
-                        { role: 'system', content: prompt }
-                    ],
-                    temperature: 0.2
-                })
-            });
+                if (!aiRes.ok) throw new Error('OpenAI fetch mislukt (' + aiRes.status + ')');
 
-            if (!aiRes.ok) throw new Error('OpenAI fetch mislukt (' + aiRes.status + ')');
+                const aiData = await aiRes.json();
+                let responseText = aiData.choices[0].message.content;
+                console.log(`[DEBUG-OPENAI] Raw Search Response for ${placeName}:`, responseText);
 
-            const aiData = await aiRes.json();
-            let responseText = aiData.choices[0].message.content;
-            console.log(`[DEBUG-OPENAI] Raw Search Response for ${placeName}:`, responseText);
+                responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const extractedInfo = JSON.parse(responseText);
 
-            // Clean up Markdown backticks if Gemini still includes them despite prompt instructions
-            responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-            const extractedInfo = JSON.parse(responseText);
-
-            // Fix string "null"s sometimes returned by AI despite prompt instructions
-            const rawEmail = extractedInfo.email === "null" || extractedInfo.email === "" ? null : extractedInfo.email;
-            const rawOwner = extractedInfo.ownerName === "null" || extractedInfo.ownerName === "" ? null : extractedInfo.ownerName;
-
-            let status = 'failed';
-            let verifiedEmail = null;
-
-            const domainMatch = website.match(/https?:\/\/(?:www\.)?([^\/]+)/);
-            const domain = domainMatch ? domainMatch[1] : '';
-
-            if (rawEmail && rawOwner) {
-                // We have both! Let's guess the direct email format usually it's [firstname]@[domain]
-                const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
-                verifiedEmail = `${firstName}@${domain}`;
-                status = 'verified';
-            } else if (rawEmail && !rawOwner) {
-                status = 'general';
-            } else if (!rawEmail && rawOwner) {
-                // We have an owner but no rawEmail on the website.
-                // It shouldn't be 'failed', we instead guess the verifiedEmail
-                const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
-                verifiedEmail = `${firstName}@${domain}`;
-                status = 'verified';
+                rawEmail = extractedInfo.email === "null" || extractedInfo.email === "" ? null : extractedInfo.email;
+                rawOwner = extractedInfo.ownerName === "null" || extractedInfo.ownerName === "" ? null : extractedInfo.ownerName;
+            } catch (fallbackErr: unknown) {
+                console.error("OpenAI Fallback Error:", fallbackErr);
+                return NextResponse.json({
+                    error: 'Zowel Gemini als OpenAI fallback faalden.',
+                    status: 'failed',
+                    initialEmail: null,
+                    ownerName: null
+                });
             }
-
-            return NextResponse.json({
-                initialEmail: rawEmail || null,
-                ownerName: rawOwner || null,
-                verifiedEmail: verifiedEmail,
-                status: status
-            });
-
-        } catch (genErr) {
-            console.error("Gemini Generation/Parse Error:", genErr);
-            return NextResponse.json({
-                error: 'De AI gaf een ongeldig antwoordformaat terug of zoeken faalde',
-                status: 'failed',
-                initialEmail: null,
-                ownerName: null
-            });
         }
+
+        let status = 'failed';
+        let verifiedEmail = null;
+
+        const domainMatch = website.match(/https?:\/\/(?:www\.)?([^\/]+)/);
+        const domain = domainMatch ? domainMatch[1] : '';
+
+        if (rawEmail && rawOwner) {
+            // We have both! Let's guess the direct email format usually it's [firstname]@[domain]
+            const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
+            verifiedEmail = `${firstName}@${domain}`;
+            status = 'verified';
+        } else if (rawEmail && !rawOwner) {
+            status = 'general';
+        } else if (!rawEmail && rawOwner) {
+            // We have an owner but no rawEmail on the website.
+            // It shouldn't be 'failed', we instead guess the verifiedEmail
+            const firstName = rawOwner.split(' ')[0].toLowerCase().trim();
+            verifiedEmail = `${firstName}@${domain}`;
+            status = 'verified';
+        }
+
+        return NextResponse.json({
+            initialEmail: rawEmail || null,
+            ownerName: rawOwner || null,
+            verifiedEmail: verifiedEmail,
+            status: status
+        });
 
     } catch (error) {
         console.error('Scraping Error:', error);
