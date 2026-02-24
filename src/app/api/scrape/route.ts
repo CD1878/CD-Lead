@@ -136,7 +136,7 @@ Jouw taken:
 1. Zoek naar het algemene of specifieke contact e-mailadres voor dit bedrijf.
 2. Zoek SPECIFIEK naar de ware oprichter (founder) of eigenaar (owner).
 -> CRUCIAAL: Gebruik je Google Search tool ALTIJD actief! Zoek op "${placeName} eigenaar" of "oprichter ${placeName} Amsterdam".
--> CRUCIAAL: Lees ALS ALLEREERSTE het "AI-overzicht" (AI Overview) bovenaan je eigen Google Search resultaten. Dit geeft heel vaak direct het antwoord (bijv. "Paula Fles en Stephan de Haas" of "Yoeri Joosten en Elin Visser"). Neem die namen exact over!
+-> CRUCIAAL: Lees ALS ALLEREERSTE het "AI-overzicht" (AI Overview) bovenaan je eigen Google Search resultaten. Dit geeft heel vaak direct het antwoord. Neem uitsluitend de daadwerkelijk gevonden namen over, verzin absolut niets als je het niet zeker weet!
 
 Als je echt geen eigenaar of e-mail kunt achterhalen via de website en Google Search, gebruik dan exact de letterlijke waarde null.
 
@@ -193,7 +193,7 @@ Website URL: ${website}
 Jouw taken:
 1. Zoek naar het algemene of specifieke contact e-mailadres voor dit bedrijf.
 2. Zoek SPECIFIEK naar de ware oprichter (founder) of eigenaar (owner).
--> CRUCIAAL: Raadpleeg als eerste prioriteit de bijgeleverde "EXTERNE BRAVE ZOEKRESULTATEN". Deze bevat actuele webresultaten gericht op "${placeName} eigenaar". Lees dit goed en zoek naar namen. Dit geeft gegarandeerd direct het antwoord (bijv. "Paula Fles en Stephan de Haas" of "Yoeri Joosten en Elin Visser"). Neem die namen exact over!
+-> CRUCIAAL: Raadpleeg als eerste prioriteit de bijgeleverde "EXTERNE BRAVE ZOEKRESULTATEN". Deze bevat actuele webresultaten gericht op "${placeName} eigenaar". Lees dit goed en zoek naar namen. Neem uitsluitend de daadwerkelijk gevonden namen over, verzin absolut niets als je het niet zeker weet!
 -> Negeer bedrijfsleiders, stagiaires of personeel.
 -> Raadpleeg daarna "OFFICIELE WEBSITE CONTENT" of deze namen terugkomen en combineer de bevindingen ("En-En" strategie).
 
